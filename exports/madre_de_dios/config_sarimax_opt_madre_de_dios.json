@@ -1,0 +1,14 @@
+{
+    "order": [
+        1,
+        1,
+        0
+    ],
+    "features": [
+        "sup_bosque",
+        "bosque",
+        "bosque_inundable",
+        "zona_pantanosa_o_pastizal_inundable",
+        "pasto"
+    ]
+}

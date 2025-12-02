@@ -1,0 +1,12 @@
+{
+    "order": [
+        2,
+        1,
+        0
+    ],
+    "features": [
+        "bosque",
+        "bosque_inundable",
+        "sup_bosque"
+    ]
+}

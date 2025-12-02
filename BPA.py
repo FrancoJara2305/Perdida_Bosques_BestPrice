@@ -41,46 +41,63 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- Funciones de Carga ---
-@st.cache_resource
-def cargar_config_general():
-    """Carga la configuración general del proyecto"""
-    try:
-        with open('config_general.json', 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        st.error("⚠️ Archivo config_general.json no encontrado")
-        return None
-
-@st.cache_resource
-def cargar_metricas_detalladas():
-    """Carga las métricas de todos los modelos"""
-    try:
-        with open('metricas_detalladas.json', 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return None
-
-@st.cache_data
-def cargar_datos_historicos():
-    """Carga datos históricos para visualización"""
-    try:
-        return pd.read_csv('datos_historicos.csv')
-    except FileNotFoundError:
-        st.warning("⚠️ datos_historicos.csv no encontrado")
-        return None
-
-@st.cache_data
-def cargar_predicciones_test():
-    """Carga las predicciones en el conjunto de prueba"""
-    try:
-        with open('predicciones_test.json', 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return None
-
 def normalizar_nombre_depto(nombre):
-    """Normaliza nombre de departamento para nombres de archivo"""
+    """Normaliza nombre de departamento para nombres de archivo/carpeta"""
     return nombre.lower().replace(' ', '_').replace('á','a').replace('é','e').replace('í','i').replace('ó','o').replace('ú','u')
+
+def obtener_ruta_depto(departamento):
+    """Retorna la ruta de la carpeta del departamento"""
+    depto_clean = normalizar_nombre_depto(departamento)
+    return os.path.join('exports', depto_clean)
+
+@st.cache_resource
+def cargar_config_general(departamento):
+    """Carga la configuración general del departamento"""
+    ruta_depto = obtener_ruta_depto(departamento)
+    archivo = os.path.join(ruta_depto, 'config_general.json')
+    
+    try:
+        with open(archivo, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        st.error(f"⚠️ Archivo {archivo} no encontrado")
+        return None
+
+@st.cache_resource
+def cargar_metricas_detalladas(departamento):
+    """Carga las métricas de todos los modelos del departamento"""
+    ruta_depto = obtener_ruta_depto(departamento)
+    archivo = os.path.join(ruta_depto, 'metricas_detalladas.json')
+    
+    try:
+        with open(archivo, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return None
+
+@st.cache_data
+def cargar_datos_historicos(departamento):
+    """Carga datos históricos para visualización"""
+    ruta_depto = obtener_ruta_depto(departamento)
+    archivo = os.path.join(ruta_depto, 'datos_historicos.csv')
+    
+    try:
+        return pd.read_csv(archivo)
+    except FileNotFoundError:
+        st.warning(f"⚠️ {archivo} no encontrado")
+        return None
+
+@st.cache_data
+def cargar_predicciones_test(departamento):
+    """Carga las predicciones en el conjunto de prueba"""
+    ruta_depto = obtener_ruta_depto(departamento)
+    archivo = os.path.join(ruta_depto, 'predicciones_test.json')
+    
+    try:
+        with open(archivo, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return None
 
 @st.cache_resource
 def cargar_modelo(departamento, tipo_modelo):
@@ -88,63 +105,66 @@ def cargar_modelo(departamento, tipo_modelo):
     Carga un modelo específico
     tipo_modelo: 'arima', 'sarimax_basic', 'sarimax_opt'
     """
+    ruta_depto = obtener_ruta_depto(departamento)
     depto_clean = normalizar_nombre_depto(departamento)
     filename = f'modelo_{tipo_modelo}_{depto_clean}.joblib'
+    filepath = os.path.join(ruta_depto, filename)
     
     try:
-        modelo = joblib.load(filename)
+        modelo = joblib.load(filepath)
         return modelo
     except FileNotFoundError:
         return None
     except Exception as e:
-        st.error(f"Error al cargar {filename}: {e}")
+        st.error(f"Error al cargar {filepath}: {e}")
         return None
 
 def cargar_config_opt(departamento):
     """Carga la configuración del modelo optimizado"""
+    ruta_depto = obtener_ruta_depto(departamento)
     depto_clean = normalizar_nombre_depto(departamento)
     filename = f'config_sarimax_opt_{depto_clean}.json'
+    filepath = os.path.join(ruta_depto, filename)
     
     try:
-        with open(filename, 'r') as f:
+        with open(filepath, 'r') as f:
             return json.load(f)
     except FileNotFoundError:
         return None
 
-# --- Cargar Recursos Globales ---
-config_general = cargar_config_general()
-metricas_detalladas = cargar_metricas_detalladas()
-datos_historicos = cargar_datos_historicos()
-predicciones_test = cargar_predicciones_test()
-
-# --- Header ---
-st.markdown('<p class="main-header">🌳 Sistema de Predicción de Pérdida de Bosque - Perú</p>', 
-            unsafe_allow_html=True)
-
-if config_general:
-    st.markdown(f"""
-    **Proyecto de Análisis Ambiental Temporal**
+@st.cache_data
+def cargar_todos_datos_historicos():
+    """Carga datos históricos de todos los departamentos para comparación"""
+    departamentos = ['HUANUCO', 'LORETO', 'MADRE DE DIOS', 'SAN MARTIN', 'UCAYALI']
+    datos_completos = []
     
-    Este sistema utiliza modelos ARIMA y SARIMAX entrenados con datos de **{config_general['periodo_datos']['inicio']}-{config_general['periodo_datos']['fin']}**
-    para predecir la pérdida de bosque en departamentos críticos del Perú.
-    """)
-else:
-    st.warning("⚠️ Configuración general no disponible. Verifica que config_general.json esté en el directorio.")
+    for depto in departamentos:
+        df = cargar_datos_historicos(depto)
+        if df is not None:
+            df['departamento'] = depto
+            datos_completos.append(df)
+    
+    if datos_completos:
+        return pd.concat(datos_completos, ignore_index=True)
+    return None
 
 # --- BARRA LATERAL ---
 st.sidebar.header("🎯 Configuración de Predicción")
 
-# Selector de Departamento
-if config_general:
-    departamentos_disponibles = config_general['departamentos']
-else:
-    departamentos_disponibles = ['UCAYALI', 'SAN MARTIN', 'LORETO']
+# Selector de Departamento - TODOS LOS 5 DEPARTAMENTOS
+departamentos_disponibles = ['HUANUCO', 'LORETO', 'MADRE DE DIOS', 'SAN MARTIN', 'UCAYALI']
 
 departamento_seleccionado = st.sidebar.selectbox(
     "Selecciona el Departamento",
     options=departamentos_disponibles,
     help="Departamento para el cual se generará la predicción"
 )
+
+# Cargar recursos del departamento seleccionado
+config_general = cargar_config_general(departamento_seleccionado)
+metricas_detalladas = cargar_metricas_detalladas(departamento_seleccionado)
+datos_historicos = cargar_datos_historicos(departamento_seleccionado)
+predicciones_test = cargar_predicciones_test(departamento_seleccionado)
 
 st.sidebar.markdown("---")
 
@@ -178,8 +198,8 @@ else:
     st.sidebar.error(f"❌ Modelo no disponible")
 
 # Mostrar métricas del modelo si están disponibles
-if metricas_detalladas and departamento_seleccionado in metricas_detalladas:
-    metricas_modelo = metricas_detalladas[departamento_seleccionado].get(tipo_modelo_key)
+if metricas_detalladas:
+    metricas_modelo = metricas_detalladas.get(tipo_modelo_key)
     if metricas_modelo:
         with st.sidebar.expander("📊 Métricas del Modelo", expanded=False):
             st.metric("MAE", f"{metricas_modelo['MAE']:.2f}")
@@ -187,6 +207,22 @@ if metricas_detalladas and departamento_seleccionado in metricas_detalladas:
             st.metric("MAPE", f"{metricas_modelo['MAPE']:.2f}%")
 
 st.sidebar.markdown("---")
+
+# --- Header ---
+st.markdown('<p class="main-header">🌳 Sistema de Predicción de Pérdida de Bosque - Perú</p>', 
+            unsafe_allow_html=True)
+
+# Mostrar información del proyecto
+st.markdown(f"""
+**Proyecto de Análisis Ambiental Temporal - {departamento_seleccionado}**
+
+Este sistema utiliza modelos ARIMA y SARIMAX para predecir la pérdida de bosque en departamentos críticos del Perú.
+""")
+
+if config_general and 'periodo_datos' in config_general:
+    st.caption(f"📅 Datos de entrenamiento: {config_general['periodo_datos']['inicio']}-{config_general['periodo_datos']['fin']}")
+elif not config_general:
+    st.warning(f"⚠️ Configuración general no disponible para {departamento_seleccionado}. Verifica la estructura de carpetas.")
 
 # --- Configuración Temporal ---
 st.sidebar.subheader("📅 Horizonte de Predicción")
@@ -219,19 +255,18 @@ if usar_exogenas and modelo is not None:
     # Determinar qué features usar
     if tipo_modelo_key == 'sarimax_opt':
         config_opt = cargar_config_opt(departamento_seleccionado)
-        if config_opt:
+        if config_opt and 'top_features' in config_opt:
             features_a_usar = config_opt['top_features']
             st.sidebar.info(f"Usando {len(features_a_usar)} features seleccionadas")
+        elif config_general and 'variables_exogenas' in config_general:
+            features_a_usar = config_general['variables_exogenas']
         else:
-            features_a_usar = config_general['variables_exogenas'] if config_general else []
+            features_a_usar = list(valores_default.keys())
     else:
-        features_a_usar = config_general['variables_exogenas'] if config_general else []
-    
-    modo_input = st.sidebar.radio(
-        "Modo de entrada de exógenas",
-        ["Valores por defecto", "Personalizar valores"],
-        help="Los valores por defecto son estimaciones basadas en tendencias históricas"
-    )
+        if config_general and 'variables_exogenas' in config_general:
+            features_a_usar = config_general['variables_exogenas']
+        else:
+            features_a_usar = list(valores_default.keys())
     
     if modo_input == "Personalizar valores":
         with st.sidebar.expander("🔧 Configurar Exógenas", expanded=True):
@@ -286,6 +321,9 @@ if usar_exogenas and modelo is not None:
         }
         for feature in features_a_usar:
             exogenas_inputs[feature] = valores_default.get(feature, 1000.0)
+else:
+    # Si no usa exógenas, crear diccionario vacío
+    valores_default = {}
 
 # --- Botón de Predicción ---
 st.sidebar.markdown("---")
@@ -389,9 +427,7 @@ with tab1:
                     fig = go.Figure()
                     
                     if datos_historicos is not None:
-                        df_hist = datos_historicos[
-                            datos_historicos['departamento'] == departamento_seleccionado
-                        ].sort_values('anio')
+                        df_hist = datos_historicos.sort_values('anio')
                         
                         if not df_hist.empty:
                             fig.add_trace(go.Scatter(
@@ -472,11 +508,9 @@ with tab1:
         if datos_historicos is not None:
             st.subheader(f"📊 Vista Previa - {departamento_seleccionado}")
             
-            df_dept = datos_historicos[datos_historicos['departamento'] == departamento_seleccionado]
-            
-            if not df_dept.empty:
+            if not datos_historicos.empty:
                 fig = px.line(
-                    df_dept,
+                    datos_historicos,
                     x='anio',
                     y='perdida_bosque',
                     title=f"Pérdida de Bosque Histórica - {departamento_seleccionado}",
@@ -488,94 +522,110 @@ with tab1:
 with tab2:
     st.subheader("📊 Comparación de Modelos en Test Set")
     
-    if predicciones_test and departamento_seleccionado in predicciones_test:
-        preds = predicciones_test[departamento_seleccionado]
-        
-        # Gráfico comparativo
-        fig = go.Figure()
-        
-        # Valores reales
-        if 'arima' in preds:
-            anios = preds['arima']['anios']
-            y_true = preds['arima']['y_true']
+    if predicciones_test:
+        # Verificar si predicciones_test es un diccionario
+        if isinstance(predicciones_test, dict):
+            # Gráfico comparativo
+            fig = go.Figure()
             
-            fig.add_trace(go.Scatter(
-                x=anios,
-                y=y_true,
-                mode='lines+markers',
-                name='Valores Reales',
-                line=dict(color='black', width=3),
-                marker=dict(size=8)
-            ))
-        
-        # Predicciones de cada modelo
-        colores = {'arima': '#1f77b4', 'sarimax_basic': '#ff7f0e', 'sarimax_opt': '#2ca02c'}
-        nombres = {'arima': 'ARIMA', 'sarimax_basic': 'SARIMAX Básico', 'sarimax_opt': 'SARIMAX Optimizado'}
-        
-        for modelo_key, datos in preds.items():
-            fig.add_trace(go.Scatter(
-                x=datos['anios'],
-                y=datos['y_pred'],
-                mode='lines+markers',
-                name=nombres[modelo_key],
-                line=dict(color=colores[modelo_key], width=2, dash='dash'),
-                marker=dict(size=6)
-            ))
-        
-        fig.update_layout(
-            title=f"Comparación de Modelos - {departamento_seleccionado}",
-            xaxis_title="Año",
-            yaxis_title="Pérdida de Bosque (ha)",
-            hovermode='x unified',
-            height=500
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Tabla de métricas
-        if metricas_detalladas and departamento_seleccionado in metricas_detalladas:
-            st.subheader("📈 Métricas de Performance")
+            # Valores reales
+            if 'arima' in predicciones_test:
+                anios = predicciones_test['arima']['anios']
+                y_true = predicciones_test['arima']['y_true']
+                
+                fig.add_trace(go.Scatter(
+                    x=anios,
+                    y=y_true,
+                    mode='lines+markers',
+                    name='Valores Reales',
+                    line=dict(color='black', width=3),
+                    marker=dict(size=8)
+                ))
             
-            metricas = metricas_detalladas[departamento_seleccionado]
+            # Predicciones de cada modelo
+            colores = {'arima': '#1f77b4', 'sarimax_basic': '#ff7f0e', 'sarimax_opt': '#2ca02c'}
+            nombres = {'arima': 'ARIMA', 'sarimax_basic': 'SARIMAX Básico', 'sarimax_opt': 'SARIMAX Optimizado'}
             
-            rows = []
-            for modelo_key in ['arima', 'sarimax_basic', 'sarimax_opt']:
-                if modelo_key in metricas:
-                    row = {'Modelo': nombres[modelo_key]}
-                    row.update(metricas[modelo_key])
-                    rows.append(row)
+            for modelo_key, datos in predicciones_test.items():
+                if isinstance(datos, dict) and 'anios' in datos and 'y_pred' in datos:
+                    fig.add_trace(go.Scatter(
+                        x=datos['anios'],
+                        y=datos['y_pred'],
+                        mode='lines+markers',
+                        name=nombres.get(modelo_key, modelo_key),
+                        line=dict(color=colores.get(modelo_key, '#999999'), width=2, dash='dash'),
+                        marker=dict(size=6)
+                    ))
             
-            df_metricas = pd.DataFrame(rows)
-            
-            # Formatear y mostrar
-            st.dataframe(
-                df_metricas.style.format({
-                    'MAE': '{:.2f}',
-                    'RMSE': '{:.2f}',
-                    'MAPE': '{:.2f}'
-                }).highlight_min(subset=['MAE', 'RMSE', 'MAPE'], color='lightgreen'),
-                use_container_width=True
+            fig.update_layout(
+                title=f"Comparación de Modelos - {departamento_seleccionado}",
+                xaxis_title="Año",
+                yaxis_title="Pérdida de Bosque (ha)",
+                hovermode='x unified',
+                height=500
             )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Tabla de métricas
+            if metricas_detalladas:
+                st.subheader("📈 Métricas de Performance")
+                
+                rows = []
+                for modelo_key in ['arima', 'sarimax_basic', 'sarimax_opt']:
+                    if modelo_key in metricas_detalladas:
+                        row = {'Modelo': nombres.get(modelo_key, modelo_key)}
+                        row.update(metricas_detalladas[modelo_key])
+                        rows.append(row)
+                
+                if rows:
+                    df_metricas = pd.DataFrame(rows)
+                    
+                    # Formatear y mostrar
+                    st.dataframe(
+                        df_metricas.style.format({
+                            'MAE': '{:.2f}',
+                            'RMSE': '{:.2f}',
+                            'MAPE': '{:.2f}'
+                        }).highlight_min(subset=['MAE', 'RMSE', 'MAPE'], color='lightgreen'),
+                        use_container_width=True
+                    )
+                else:
+                    st.info("No hay métricas disponibles para comparar")
+        else:
+            st.warning(f"El formato de predicciones_test no es el esperado. Tipo: {type(predicciones_test)}")
     else:
         st.warning("No hay datos de predicciones de prueba disponibles")
 
 with tab3:
     st.subheader("📈 Datos Históricos de Pérdida de Bosque")
     
-    if datos_historicos is not None:
+    # Cargar datos de todos los departamentos
+    datos_todos = cargar_todos_datos_historicos()
+    
+    if datos_todos is not None:
         # Comparación entre departamentos
         fig = px.line(
-            datos_historicos,
+            datos_todos,
             x='anio',
             y='perdida_bosque',
             color='departamento',
-            title="Comparación Entre Departamentos",
+            title="Comparación Entre Todos los Departamentos",
             labels={'anio': 'Año', 'perdida_bosque': 'Pérdida de Bosque (ha)', 'departamento': 'Departamento'}
         )
         st.plotly_chart(fig, use_container_width=True)
         
         # Tabla de datos
-        st.dataframe(datos_historicos, use_container_width=True)
+        st.dataframe(datos_todos, use_container_width=True)
+        
+        # Botón de descarga
+        csv_todos = datos_todos.to_csv(index=False)
+        st.download_button(
+            label="📥 Descargar Todos los Datos (CSV)",
+            data=csv_todos,
+            file_name=f"datos_historicos_todos_departamentos.csv",
+            mime="text/csv"
+        )
     else:
         st.warning("Datos históricos no disponibles")
 
@@ -604,22 +654,40 @@ with tab4:
         - Validación cruzada walk-forward
         - Mejor performance general
         """)
+        
+        st.markdown("### 🗺️ Departamentos Disponibles")
+        st.markdown("""
+        - **Huánuco**
+        - **Loreto**
+        - **Madre de Dios**
+        - **San Martín**
+        - **Ucayali**
+        """)
     
     with col2:
         if config_general:
-            st.markdown("### 🔧 Configuración del Proyecto")
+            st.markdown(f"### 🔧 Configuración - {departamento_seleccionado}")
             st.json(config_general)
     
     st.markdown("---")
     
     if metricas_detalladas:
-        st.markdown("### 📊 Performance por Departamento")
-        
-        for depto in config_general['departamentos']:
-            with st.expander(f"{depto}"):
-                if depto in metricas_detalladas:
-                    st.json(metricas_detalladas[depto])
+        st.markdown(f"### 📊 Performance - {departamento_seleccionado}")
+        st.json(metricas_detalladas)
+    
+    # Mostrar métricas de todos los departamentos
+    st.markdown("---")
+    st.markdown("### 🌳 Resumen General - Todos los Departamentos")
+    
+    with st.expander("Ver métricas de todos los departamentos"):
+        for depto in departamentos_disponibles:
+            metricas_depto = cargar_metricas_detalladas(depto)
+            if metricas_depto:
+                st.markdown(f"#### {depto}")
+                st.json(metricas_depto)
+            else:
+                st.warning(f"No hay métricas disponibles para {depto}")
 
 # --- Footer ---
 st.markdown("---")
-st.caption("🌳 Sistema de Predicción de Pérdida de Bosque | Desarrollado con Streamlit | ARIMAX/SARIMAX Models")
+st.caption("🌳 Sistema de Predicción de Pérdida de Bosque | Desarrollado con Streamlit | ARIMAX/SARIMAX Models | 5 Departamentos Amazónicos")

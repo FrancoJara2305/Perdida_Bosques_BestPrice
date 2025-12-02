@@ -1,0 +1,28 @@
+{
+    "departamento": "HUANUCO",
+    "target": "perdida_bosque",
+    "time_col": "anio",
+    "exogenas": [
+        "sup_bosque",
+        "bosque",
+        "bosque_seco",
+        "bosque_inundable",
+        "zona_pantanosa_o_pastizal_inundable",
+        "pastizal_herbazal",
+        "otras_formaciones_no_boscosas",
+        "pasto",
+        "agricultura",
+        "mosaico_agropecuario",
+        "playa",
+        "infraestructura_urbana",
+        "otra_area_sin_vegetacion",
+        "mineria",
+        "otra_area_natural_sin_vegetacion",
+        "rio_lago_u_oceano"
+    ],
+    "modelos_exportados": [
+        "modelo_arima_huanuco.joblib",
+        "modelo_sarimax_basic_huanuco.joblib",
+        "modelo_sarimax_opt_huanuco.joblib"
+    ]
+}

@@ -1,0 +1,12 @@
+{
+    "order": [
+        1,
+        1,
+        0
+    ],
+    "features": [
+        "pastizal_herbazal",
+        "playa",
+        "zona_pantanosa_o_pastizal_inundable"
+    ]
+}

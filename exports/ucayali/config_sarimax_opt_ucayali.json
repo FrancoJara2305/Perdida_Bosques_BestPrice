@@ -1,0 +1,12 @@
+{
+    "order": [
+        1,
+        0,
+        1
+    ],
+    "features": [
+        "mosaico_agropecuario",
+        "otra_area_sin_vegetacion",
+        "infraestructura_urbana"
+    ]
+}
