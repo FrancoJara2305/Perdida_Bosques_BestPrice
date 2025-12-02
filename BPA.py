@@ -95,8 +95,23 @@ def cargar_predicciones_test(departamento):
     
     try:
         with open(archivo, 'r', encoding='utf-8') as f:
-            return json.load(f)
+            data = json.load(f)
+            
+        # Si es una lista, intentar convertirla a diccionario
+        if isinstance(data, list):
+            # Si la lista contiene diccionarios con claves de modelo
+            if data and isinstance(data[0], dict):
+                # Convertir lista a diccionario usando el primer elemento
+                return data[0] if data else None
+            else:
+                st.warning(f"Formato de predicciones_test no soportado en {archivo}")
+                return None
+        
+        return data
     except FileNotFoundError:
+        return None
+    except json.JSONDecodeError:
+        st.error(f"Error al decodificar {archivo}")
         return None
 
 @st.cache_resource
@@ -249,6 +264,26 @@ st.sidebar.markdown("---")
 exogenas_inputs = {}
 usar_exogenas = tipo_modelo_key != 'arima'
 
+# Valores por defecto razonables (definir ANTES de usarlos)
+valores_default = {
+    'sup_bosque': 6000000,  # Superficie total de bosque
+    'bosque': 5000000,
+    'bosque_seco': 100000.0,
+    'bosque_inundable': 50000.0,
+    'zona_pantanosa_o_pastizal_inundable': 10000,
+    'pastizal_herbazal': 20000,
+    'otras_formaciones_no_boscosas': 5000,
+    'pasto': 30000.0,
+    'agricultura': 100000.0,
+    'mosaico_agropecuario': 15000,
+    'playa': 100,
+    'infraestructura_urbana': 5000,
+    'otra_area_sin_vegetacion': 1000,
+    'mineria': 5000.0,
+    'otra_area_natural_sin_vegetacion': 500,
+    'rio_lago_u_oceano': 50000
+}
+
 if usar_exogenas and modelo is not None:
     st.sidebar.subheader("🌿 Variables Exógenas")
     
@@ -268,28 +303,15 @@ if usar_exogenas and modelo is not None:
         else:
             features_a_usar = list(valores_default.keys())
     
+    modo_input = st.sidebar.radio(
+        "Modo de entrada de exógenas",
+        ["Valores por defecto", "Personalizar valores"],
+        help="Los valores por defecto son estimaciones basadas en tendencias históricas"
+    )
+    
     if modo_input == "Personalizar valores":
         with st.sidebar.expander("🔧 Configurar Exógenas", expanded=True):
             st.caption("**Valores en hectáreas**")
-            
-            # Valores por defecto razonables
-            valores_default = {
-                'bosque': 5000000,
-                'bosque_seco': 100000.0,
-                'bosque_inundable': 50000.0,
-                'zona_pantanosa_o_pastizal_inundable': 10000,
-                'pastizal_herbazal': 20000,
-                'otras_formaciones_no_boscosas': 5000,
-                'pasto': 30000.0,
-                'agricultura': 100000.0,
-                'mosaico_agropecuario': 15000,
-                'playa': 100,
-                'infraestructura_urbana': 5000,
-                'otra_area_sin_vegetacion': 1000,
-                'mineria': 5000.0,
-                'otra_area_natural_sin_vegetacion': 500,
-                'rio_lago_u_oceano': 50000
-            }
             
             for feature in features_a_usar:
                 valor_default = valores_default.get(feature, 1000.0)
@@ -302,28 +324,8 @@ if usar_exogenas and modelo is not None:
                 )
     else:
         # Usar valores por defecto
-        valores_default = {
-            'bosque': 5000000,
-            'bosque_seco': 100000.0,
-            'bosque_inundable': 50000.0,
-            'zona_pantanosa_o_pastizal_inundable': 10000,
-            'pastizal_herbazal': 20000,
-            'otras_formaciones_no_boscosas': 5000,
-            'pasto': 30000.0,
-            'agricultura': 100000.0,
-            'mosaico_agropecuario': 15000,
-            'playa': 100,
-            'infraestructura_urbana': 5000,
-            'otra_area_sin_vegetacion': 1000,
-            'mineria': 5000.0,
-            'otra_area_natural_sin_vegetacion': 500,
-            'rio_lago_u_oceano': 50000
-        }
         for feature in features_a_usar:
             exogenas_inputs[feature] = valores_default.get(feature, 1000.0)
-else:
-    # Si no usa exógenas, crear diccionario vacío
-    valores_default = {}
 
 # --- Botón de Predicción ---
 st.sidebar.markdown("---")
@@ -350,16 +352,53 @@ with tab1:
                         
                     else:
                         # SARIMAX: con exógenas
-                        # Crear DataFrame con exógenas
+                        # Determinar features a usar
                         if tipo_modelo_key == 'sarimax_opt':
                             config_opt = cargar_config_opt(departamento_seleccionado)
-                            features_usar = config_opt['top_features'] if config_opt else []
+                            if config_opt and 'top_features' in config_opt:
+                                features_usar = config_opt['top_features']
+                            elif config_general and 'variables_exogenas' in config_general:
+                                features_usar = config_general['variables_exogenas']
+                            else:
+                                features_usar = list(exogenas_inputs.keys())
                         else:
                             features_usar = list(exogenas_inputs.keys())
                         
-                        # Crear exógenas para todos los períodos
+                        # Verificar qué features espera el modelo
+                        if hasattr(modelo.model, 'exog_names'):
+                            features_esperadas = modelo.model.exog_names
+                            
+                            # Filtrar solo las features que el modelo espera
+                            features_disponibles = [f for f in features_esperadas if f in exogenas_inputs]
+                            
+                            if len(features_disponibles) < len(features_esperadas):
+                                # Completar con valores por defecto
+                                features_faltantes = [f for f in features_esperadas if f not in exogenas_inputs]
+                                for feature in features_faltantes:
+                                    exogenas_inputs[feature] = valores_default.get(feature, 1000.0)
+                                
+                                with st.expander("ℹ️ Información de Features", expanded=False):
+                                    st.caption(f"**Features utilizadas ({len(features_esperadas)}):**")
+                                    st.text(", ".join(features_esperadas))
+                                    if features_faltantes:
+                                        st.caption(f"**Features completadas automáticamente ({len(features_faltantes)}):**")
+                                        st.text(", ".join(features_faltantes))
+                            
+                            features_usar = features_esperadas
+                        
+                        # Crear DataFrame con exógenas en el orden correcto
                         exog_df = pd.DataFrame([exogenas_inputs] * periodos_forecast)
-                        exog_df = exog_df[features_usar]
+                        
+                        # Asegurar que solo incluimos las columnas que el modelo espera
+                        try:
+                            exog_df = exog_df[features_usar]
+                        except KeyError as e:
+                            st.error(f"Falta la feature: {e}. Usando valores por defecto.")
+                            # Agregar columnas faltantes con valores por defecto
+                            for feature in features_usar:
+                                if feature not in exog_df.columns:
+                                    exog_df[feature] = valores_default.get(feature, 1000.0)
+                            exog_df = exog_df[features_usar]
                         
                         # Predicción
                         forecast = modelo.forecast(steps=periodos_forecast, exog=exog_df)
