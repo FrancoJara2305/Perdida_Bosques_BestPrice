@@ -82,10 +82,31 @@ def cargar_datos_historicos(departamento):
     archivo = os.path.join(ruta_depto, 'datos_historicos.csv')
     
     try:
-        return pd.read_csv(archivo)
+        df = pd.read_csv(archivo)
+        return df
     except FileNotFoundError:
         st.warning(f"⚠️ {archivo} no encontrado")
         return None
+
+def obtener_valores_exogenas_promedio(departamento):
+    """Obtiene los valores promedio de las últimas observaciones para proyección"""
+    df = cargar_datos_historicos(departamento)
+    
+    if df is None or df.empty:
+        return None
+    
+    # Obtener las últimas 3 observaciones para promediar
+    ultimas_obs = df.tail(3)
+    
+    # Calcular promedio de todas las columnas excepto 'anio' y 'perdida_bosque'
+    columnas_exogenas = [col for col in df.columns if col not in ['anio', 'perdida_bosque', 'departamento']]
+    
+    valores_promedio = {}
+    for col in columnas_exogenas:
+        if col in ultimas_obs.columns:
+            valores_promedio[col] = ultimas_obs[col].mean()
+    
+    return valores_promedio
 
 @st.cache_data
 def cargar_predicciones_test(departamento):
@@ -265,27 +286,31 @@ exogenas_inputs = {}
 usar_exogenas = tipo_modelo_key != 'arima'
 
 # Valores por defecto razonables (definir ANTES de usarlos)
+# NOTA: Estos valores deben representar cambios/pérdidas anuales, no superficies totales
 valores_default = {
-    'sup_bosque': 6000000,  # Superficie total de bosque
-    'bosque': 5000000,
-    'bosque_seco': 100000.0,
-    'bosque_inundable': 50000.0,
-    'zona_pantanosa_o_pastizal_inundable': 10000,
-    'pastizal_herbazal': 20000,
-    'otras_formaciones_no_boscosas': 5000,
-    'pasto': 30000.0,
-    'agricultura': 100000.0,
-    'mosaico_agropecuario': 15000,
-    'playa': 100,
-    'infraestructura_urbana': 5000,
-    'otra_area_sin_vegetacion': 1000,
-    'mineria': 5000.0,
-    'otra_area_natural_sin_vegetacion': 500,
-    'rio_lago_u_oceano': 50000
+    'sup_bosque': 50000,  # Cambio en superficie de bosque (ha/año)
+    'bosque': 45000,
+    'bosque_seco': 1000.0,
+    'bosque_inundable': 500.0,
+    'zona_pantanosa_o_pastizal_inundable': 100,
+    'pastizal_herbazal': 200,
+    'otras_formaciones_no_boscosas': 50,
+    'pasto': 300.0,
+    'agricultura': 1000.0,
+    'mosaico_agropecuario': 150,
+    'playa': 10,
+    'infraestructura_urbana': 50,
+    'otra_area_sin_vegetacion': 10,
+    'mineria': 50.0,
+    'otra_area_natural_sin_vegetacion': 5,
+    'rio_lago_u_oceano': 50
 }
 
 if usar_exogenas and modelo is not None:
     st.sidebar.subheader("🌿 Variables Exógenas")
+    
+    # Obtener valores reales del histórico
+    valores_reales = obtener_valores_exogenas_promedio(departamento_seleccionado)
     
     # Determinar qué features usar
     if tipo_modelo_key == 'sarimax_opt':
@@ -303,10 +328,16 @@ if usar_exogenas and modelo is not None:
         else:
             features_a_usar = list(valores_default.keys())
     
+    # Actualizar valores_default con valores reales si están disponibles
+    if valores_reales:
+        for key, value in valores_reales.items():
+            if key in valores_default:
+                valores_default[key] = value
+    
     modo_input = st.sidebar.radio(
         "Modo de entrada de exógenas",
-        ["Valores por defecto", "Personalizar valores"],
-        help="Los valores por defecto son estimaciones basadas en tendencias históricas"
+        ["Valores históricos (recomendado)", "Personalizar valores"],
+        help="Los valores históricos son el promedio de las últimas 3 observaciones"
     )
     
     if modo_input == "Personalizar valores":
@@ -323,7 +354,12 @@ if usar_exogenas and modelo is not None:
                     key=f"exog_{feature}"
                 )
     else:
-        # Usar valores por defecto
+        # Usar valores históricos (promedio de últimas observaciones)
+        if valores_reales:
+            st.sidebar.success(f"✅ Usando promedios históricos de últimas 3 observaciones")
+        else:
+            st.sidebar.warning("⚠️ No se pudieron cargar valores históricos, usando estimaciones")
+        
         for feature in features_a_usar:
             exogenas_inputs[feature] = valores_default.get(feature, 1000.0)
 
